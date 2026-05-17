@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: chat-server
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/realtime}
+      auto-index-creation: true
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: ${SERVER_PORT:8081}
+
+chat:
+  instance-id: ${CHAT_INSTANCE_ID:chat-server-local}
