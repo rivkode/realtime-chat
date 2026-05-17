@@ -13,9 +13,12 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * {@link EventRepository}의 MongoDB 구현. 도메인 인터페이스를 인프라가 구현(의존성 역전).
@@ -79,6 +82,15 @@ public class MongoEventRepository implements EventRepository {
 				.limit(limit);
 		return mongoTemplate.find(query, EventDocument.class).stream()
 				.map(EventDocumentMapper::toDomain).toList();
+	}
+
+	@Override
+	public Set<String> findJoinedUserIds(UUID sessionId) {
+		Query query = new Query(Criteria.where("sessionId").is(sessionId)
+				.and("type").is(EventType.PARTICIPANT_JOINED));
+		return mongoTemplate.find(query, EventDocument.class).stream()
+				.map(EventDocument::getActorUserId)
+				.collect(Collectors.toCollection(LinkedHashSet::new));
 	}
 
 	@Override
