@@ -1,8 +1,9 @@
-package com.realtime.common.infrastructure.mongo;
+package com.realtime.api.infrastructure.mongo;
 
 import com.realtime.common.domain.session.Session;
 import com.realtime.common.domain.session.SessionRepository;
 import com.realtime.common.domain.session.SessionStatus;
+import com.realtime.common.infrastructure.mongo.SessionDocument;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/** api-server 측 {@link SessionRepository} 구현(MongoDB). */
 @Repository
 @RequiredArgsConstructor
 public class MongoSessionRepository implements SessionRepository {

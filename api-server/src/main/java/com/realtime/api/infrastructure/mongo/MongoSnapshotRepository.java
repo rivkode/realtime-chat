@@ -1,7 +1,9 @@
-package com.realtime.common.infrastructure.mongo;
+package com.realtime.api.infrastructure.mongo;
 
 import com.realtime.common.domain.session.Snapshot;
 import com.realtime.common.domain.session.SnapshotRepository;
+import com.realtime.common.infrastructure.mongo.SnapshotDocument;
+import com.realtime.common.infrastructure.mongo.SnapshotDocumentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -13,6 +15,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+/** api-server 측 {@link SnapshotRepository} 구현(MongoDB). */
 @Repository
 @RequiredArgsConstructor
 public class MongoSnapshotRepository implements SnapshotRepository {

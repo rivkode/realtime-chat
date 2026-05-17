@@ -3,6 +3,7 @@ package com.realtime.common.domain.event;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -31,4 +32,10 @@ public interface EventRepository {
 
 	/** 마지막 스냅샷 이후 이벤트 개수 — 스냅샷 트리거 임계치 판정용(§12.3). */
 	long countAfter(UUID sessionId, UUID lastSnapshotEventId);
+
+	/**
+	 * 세션에 join한 user_id 집합. participant_left를 고려하지 않은 단순 집계 — 정확한 현재 멤버는
+	 * 리듀서로 계산해야 한다(§10). 세션 목록 응답용 경량 조회.
+	 */
+	Set<String> findJoinedUserIds(UUID sessionId);
 }
