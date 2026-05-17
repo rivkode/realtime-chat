@@ -1,48 +1,32 @@
 package com.realtime.common.domain;
 
-import java.security.SecureRandom;
+import com.fasterxml.uuid.Generators;
+import com.fasterxml.uuid.impl.TimeBasedEpochGenerator;
+
 import java.util.UUID;
 
 /**
- * RFC 9562 UUIDv7 — 앞 48bit 밀리초 타임스탬프 + 나머지 난수.
- * 시간순 정렬이 가능하므로 {@code _id} 정렬이 그대로 수신 순서가 된다(설계서 §2.3, §9.2).
+ * RFC 9562 UUIDv7 생성기 — Java UUID Generator(JUG)에 위임하는 얇은 wrapper.
+ *
+ * <p>JUG의 {@link Generators#timeBasedEpochGenerator()}는 monotonic counter를 사용해
+ * <strong>같은 밀리초 안에 호출되어도 단조 증가</strong>를 보장한다(설계서 §9.2의 "1ms 내 순서 뒤집힘"
+ * 한계를 라이브러리 레벨에서 해소). 정렬·복원·재연결 커서의 기준이 되는 이벤트 {@code _id}로 적합.
+ *
+ * <p>wrapper로 둔 이유는 (1) 호출처가 단일 진입점을 통해 사용하도록 강제하고,
+ * (2) 추후 라이브러리·구현 교체 시 한 곳만 수정하기 위함.
  */
 public final class UuidV7 {
 
-	private static final SecureRandom RANDOM = new SecureRandom();
+	private static final TimeBasedEpochGenerator GENERATOR = Generators.timeBasedEpochGenerator();
 
 	private UuidV7() {
 	}
 
 	public static UUID generate() {
-		return generate(System.currentTimeMillis());
+		return GENERATOR.generate();
 	}
 
-	public static UUID generate(long unixTimestampMillis) {
-		byte[] bytes = new byte[16];
-		RANDOM.nextBytes(bytes);
-
-		bytes[0] = (byte) ((unixTimestampMillis >>> 40) & 0xFF);
-		bytes[1] = (byte) ((unixTimestampMillis >>> 32) & 0xFF);
-		bytes[2] = (byte) ((unixTimestampMillis >>> 24) & 0xFF);
-		bytes[3] = (byte) ((unixTimestampMillis >>> 16) & 0xFF);
-		bytes[4] = (byte) ((unixTimestampMillis >>> 8) & 0xFF);
-		bytes[5] = (byte) (unixTimestampMillis & 0xFF);
-
-		bytes[6] = (byte) ((bytes[6] & 0x0F) | 0x70);
-		bytes[8] = (byte) ((bytes[8] & 0x3F) | 0x80);
-
-		long msb = 0;
-		long lsb = 0;
-		for (int i = 0; i < 8; i++) {
-			msb = (msb << 8) | (bytes[i] & 0xFFL);
-		}
-		for (int i = 8; i < 16; i++) {
-			lsb = (lsb << 8) | (bytes[i] & 0xFFL);
-		}
-		return new UUID(msb, lsb);
-	}
-
+	/** UUIDv7 앞 48bit에 박힌 unix epoch millis 추출(디버깅·로깅 용). */
 	public static long extractTimestampMillis(UUID uuid) {
 		return uuid.getMostSignificantBits() >>> 16;
 	}

@@ -40,7 +40,7 @@ public class SessionApplicationService {
 
 	public Session create(String createdBy) {
 		Instant now = clock.instant();
-		UUID sessionId = UuidV7.generate(now.toEpochMilli());
+		UUID sessionId = UuidV7.generate();
 		Session session = Session.create(sessionId, createdBy, now);
 		sessionRepository.save(session);
 		eventAppendService.append(sessionId, createdBy, sessionId,

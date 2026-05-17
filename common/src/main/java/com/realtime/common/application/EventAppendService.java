@@ -34,7 +34,7 @@ public class EventAppendService {
 							   EventPayload payload, Instant clientTs) {
 		Instant serverTs = clock.instant();
 		Event event = new Event(
-				UuidV7.generate(serverTs.toEpochMilli()),
+				UuidV7.generate(),
 				sessionId,
 				payload.type(),
 				actorUserId,
