@@ -1,9 +1,11 @@
-package com.realtime.common.infrastructure.mongo;
+package com.realtime.api.infrastructure.mongo;
 
 import com.realtime.common.domain.event.DuplicateClientEventIdException;
 import com.realtime.common.domain.event.Event;
 import com.realtime.common.domain.event.EventRepository;
 import com.realtime.common.domain.event.EventType;
+import com.realtime.common.infrastructure.mongo.EventDocument;
+import com.realtime.common.infrastructure.mongo.EventDocumentMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Sort;
@@ -21,7 +23,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * {@link EventRepository}의 MongoDB 구현. 도메인 인터페이스를 인프라가 구현(의존성 역전).
+ * api-server 측 {@link EventRepository} 구현(MongoDB).
+ * 도메인 인터페이스를 인프라가 구현(의존성 역전, CLAUDE.md DDD 원칙).
+ * Document/매퍼는 common이 공유하지만, 쿼리 구현은 사용처 책임이라 각 서버 모듈에서 정의한다.
  * Spring Data가 MongoDB 드라이버 예외를 {@link DuplicateKeyException}으로 매핑한다.
  */
 @Repository
