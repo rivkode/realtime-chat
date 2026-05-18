@@ -4,6 +4,8 @@ import com.realtime.api.application.SessionApplicationService.EndOutcome;
 import com.realtime.api.application.SessionApplicationService.JoinOutcome;
 import com.realtime.common.application.EventAppendService;
 import com.realtime.common.application.InMemoryEventRepository;
+import com.realtime.common.application.InMemorySessionRepository;
+import com.realtime.common.application.SnapshotApplicationService;
 import com.realtime.common.application.InMemorySnapshotRepository;
 import com.realtime.common.domain.event.EventType;
 import com.realtime.common.domain.session.Session;

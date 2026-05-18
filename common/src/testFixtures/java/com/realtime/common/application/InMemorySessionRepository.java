@@ -1,4 +1,4 @@
-package com.realtime.api.application;
+package com.realtime.common.application;
 
 import com.realtime.common.domain.session.Session;
 import com.realtime.common.domain.session.SessionRepository;
@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-class InMemorySessionRepository implements SessionRepository {
+public class InMemorySessionRepository implements SessionRepository {
 
 	private final Map<UUID, Session> store = new ConcurrentHashMap<>();
 

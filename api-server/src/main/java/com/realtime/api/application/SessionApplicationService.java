@@ -2,6 +2,7 @@ package com.realtime.api.application;
 
 import com.realtime.common.application.EventAppendService;
 import com.realtime.common.application.EventAppendService.AppendResult;
+import com.realtime.common.application.SnapshotApplicationService;
 import com.realtime.common.domain.UuidV7;
 import com.realtime.common.domain.event.Event;
 import com.realtime.common.domain.event.EventPayload;
