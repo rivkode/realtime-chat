@@ -1,7 +1,10 @@
 package com.realtime.chat.application;
 
 import com.realtime.chat.application.ParticipantDispatchService.ParticipantOutcome;
+import com.realtime.chat.application.broadcast.PresenceStatus;
+import com.realtime.chat.application.broadcast.SessionChannelMessage;
 import com.realtime.chat.application.broadcast.SessionEventBroadcast;
+import com.realtime.chat.infrastructure.redis.PresenceStore;
 import com.realtime.chat.infrastructure.redis.SessionChannelPublisher;
 import com.realtime.common.application.EventAppendService;
 import com.realtime.common.application.InMemoryEventRepository;
@@ -20,6 +23,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,8 +38,10 @@ class ParticipantDispatchServiceTest {
 	private final SnapshotApplicationService snapshotApplicationService = new SnapshotApplicationService(
 			sessionRepository, snapshotRepository, eventRepository, fixedClock);
 	private final RecordingPublisher publisher = new RecordingPublisher();
+	private final InMemoryPresenceStore presenceStore = new InMemoryPresenceStore();
+	private final PresenceService presenceService = new PresenceService(presenceStore, publisher, fixedClock);
 	private final ParticipantDispatchService service = new ParticipantDispatchService(
-			sessionRepository, eventAppendService, publisher, snapshotApplicationService);
+			sessionRepository, eventAppendService, publisher, snapshotApplicationService, presenceService);
 
 	@Test
 	void join_appends_event_and_publishes_broadcast() {
@@ -45,8 +51,9 @@ class ParticipantDispatchServiceTest {
 
 		assertThat(outcome.duplicate()).isFalse();
 		assertThat(outcome.event().type()).isEqualTo(EventType.PARTICIPANT_JOINED);
-		assertThat(publisher.published).hasSize(1);
-		assertThat(publisher.published.get(0).eventId()).isEqualTo(outcome.event().id());
+		assertThat(publisher.publishedEvents()).hasSize(1);
+		assertThat(publisher.publishedEvents().get(0).eventId()).isEqualTo(outcome.event().id());
+		assertThat(presenceStore.isOnline(session.id(), "user-2")).isTrue();
 	}
 
 	@Test
@@ -59,7 +66,7 @@ class ParticipantDispatchServiceTest {
 
 		assertThat(second.duplicate()).isTrue();
 		assertThat(second.event().id()).isEqualTo(first.event().id());
-		assertThat(publisher.published).hasSize(1); // 중복은 publish 생략
+		assertThat(publisher.publishedEvents()).hasSize(1); // 중복은 event publish 생략
 	}
 
 	@Test
@@ -88,7 +95,13 @@ class ParticipantDispatchServiceTest {
 		ParticipantOutcome outcome = service.leave(session.id(), "user-2", UUID.randomUUID());
 
 		assertThat(outcome.event().type()).isEqualTo(EventType.PARTICIPANT_LEFT);
-		assertThat(publisher.published).hasSize(1);
+		assertThat(publisher.publishedEvents()).hasSize(1);
+		// §8.3 능동 전파: leave 시 PresenceBroadcast(OFFLINE)도 함께 발행
+		assertThat(publisher.published.stream()
+				.anyMatch(m -> m instanceof com.realtime.chat.application.broadcast.PresenceBroadcast pb
+						&& pb.status() == PresenceStatus.OFFLINE
+						&& pb.userId().equals("user-2"))).isTrue();
+		assertThat(presenceStore.isOnline(session.id(), "user-2")).isFalse();
 		// §12.3 trigger 1: leave 후 즉시 스냅샷 (@Async가 동기 실행되어 검증 가능)
 		assertThat(snapshotRepository.findLatest(session.id())).isPresent();
 	}
@@ -113,15 +126,49 @@ class ParticipantDispatchServiceTest {
 	}
 
 	private static class RecordingPublisher extends SessionChannelPublisher {
-		private final List<SessionEventBroadcast> published = new ArrayList<>();
+		private final List<SessionChannelMessage> published = new ArrayList<>();
 
 		RecordingPublisher() {
 			super(null);
 		}
 
 		@Override
-		public void publish(SessionEventBroadcast broadcast) {
-			published.add(broadcast);
+		public void publish(SessionChannelMessage message) {
+			published.add(message);
+		}
+
+		List<SessionEventBroadcast> publishedEvents() {
+			return published.stream()
+					.filter(m -> m instanceof SessionEventBroadcast)
+					.map(m -> (SessionEventBroadcast) m)
+					.toList();
+		}
+	}
+
+	private static class InMemoryPresenceStore extends PresenceStore {
+		private final java.util.Set<String> online = ConcurrentHashMap.newKeySet();
+
+		InMemoryPresenceStore() {
+			super(null);
+		}
+
+		@Override
+		public void markOnline(UUID sessionId, String userId) {
+			online.add(key(sessionId, userId));
+		}
+
+		@Override
+		public void markOffline(UUID sessionId, String userId) {
+			online.remove(key(sessionId, userId));
+		}
+
+		@Override
+		public boolean isOnline(UUID sessionId, String userId) {
+			return online.contains(key(sessionId, userId));
+		}
+
+		private String key(UUID sessionId, String userId) {
+			return sessionId + ":" + userId;
 		}
 	}
 }

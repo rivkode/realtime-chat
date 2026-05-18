@@ -42,7 +42,9 @@ class SessionEventBroadcastTest {
 	}
 
 	@Test
-	void broadcast_round_trips_through_json() throws Exception {
+	void broadcast_round_trips_through_json_as_sealed_message() throws Exception {
+		// SessionChannelMessage sealed로 직렬화/역직렬화해야 Jackson polymorphic이 동작.
+		// Redis subscriber의 실제 deserialize 경로(SessionChannelSubscriber)와 동일.
 		Event event = new Event(
 				UuidV7.generate(),
 				UUID.randomUUID(),
@@ -55,13 +57,31 @@ class SessionEventBroadcastTest {
 		);
 		SessionEventBroadcast original = SessionEventBroadcast.of(event);
 
-		String json = objectMapper.writeValueAsString(original);
-		SessionEventBroadcast deserialized = objectMapper.readValue(json, SessionEventBroadcast.class);
+		String json = objectMapper.writeValueAsString((SessionChannelMessage) original);
+		SessionChannelMessage deserialized = objectMapper.readValue(json, SessionChannelMessage.class);
 
-		assertThat(deserialized.eventId()).isEqualTo(original.eventId());
-		assertThat(deserialized.sessionId()).isEqualTo(original.sessionId());
-		assertThat(deserialized.type()).isEqualTo(original.type());
-		assertThat(deserialized.payload()).isEqualTo(original.payload());
-		assertThat(deserialized.serverTs()).isEqualTo(original.serverTs());
+		assertThat(deserialized).isInstanceOf(SessionEventBroadcast.class);
+		SessionEventBroadcast cast = (SessionEventBroadcast) deserialized;
+		assertThat(cast.eventId()).isEqualTo(original.eventId());
+		assertThat(cast.sessionId()).isEqualTo(original.sessionId());
+		assertThat(cast.type()).isEqualTo(original.type());
+		assertThat(cast.payload()).isEqualTo(original.payload());
+		assertThat(cast.serverTs()).isEqualTo(original.serverTs());
+	}
+
+	@Test
+	void presence_broadcast_round_trips_through_sealed_message() throws Exception {
+		PresenceBroadcast original = new PresenceBroadcast(
+				UUID.randomUUID(), "user-2", PresenceStatus.ONLINE,
+				Instant.parse("2026-05-18T20:00:00Z"));
+
+		String json = objectMapper.writeValueAsString((SessionChannelMessage) original);
+		SessionChannelMessage deserialized = objectMapper.readValue(json, SessionChannelMessage.class);
+
+		assertThat(deserialized).isInstanceOf(PresenceBroadcast.class);
+		PresenceBroadcast cast = (PresenceBroadcast) deserialized;
+		assertThat(cast.sessionId()).isEqualTo(original.sessionId());
+		assertThat(cast.userId()).isEqualTo("user-2");
+		assertThat(cast.status()).isEqualTo(PresenceStatus.ONLINE);
 	}
 }
