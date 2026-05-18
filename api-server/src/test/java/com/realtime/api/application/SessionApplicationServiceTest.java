@@ -4,6 +4,7 @@ import com.realtime.api.application.SessionApplicationService.EndOutcome;
 import com.realtime.api.application.SessionApplicationService.JoinOutcome;
 import com.realtime.common.application.EventAppendService;
 import com.realtime.common.application.InMemoryEventRepository;
+import com.realtime.common.application.InMemorySnapshotRepository;
 import com.realtime.common.domain.event.EventType;
 import com.realtime.common.domain.session.Session;
 import com.realtime.common.domain.session.SessionAlreadyEndedException;
@@ -23,10 +24,13 @@ class SessionApplicationServiceTest {
 
 	private final InMemoryEventRepository eventRepository = new InMemoryEventRepository();
 	private final InMemorySessionRepository sessionRepository = new InMemorySessionRepository();
+	private final InMemorySnapshotRepository snapshotRepository = new InMemorySnapshotRepository();
 	private final Clock fixedClock = Clock.fixed(Instant.parse("2026-05-18T12:00:00Z"), ZoneOffset.UTC);
 	private final EventAppendService eventAppendService = new EventAppendService(eventRepository, fixedClock);
+	private final SnapshotApplicationService snapshotApplicationService = new SnapshotApplicationService(
+			sessionRepository, snapshotRepository, eventRepository, fixedClock);
 	private final SessionApplicationService service = new SessionApplicationService(
-			sessionRepository, eventRepository, eventAppendService, fixedClock);
+			sessionRepository, eventRepository, eventAppendService, snapshotApplicationService, fixedClock);
 
 	@Test
 	void create_persists_session_and_emits_session_created_event() {
@@ -89,5 +93,16 @@ class SessionApplicationServiceTest {
 
 		assertThatThrownBy(() -> service.join(session.id(), "user-2", UUID.randomUUID()))
 				.isInstanceOf(SessionAlreadyEndedException.class);
+	}
+
+	@Test
+	void end_triggers_immediate_snapshot() {
+		// §12.3 trigger 1: session_ended 즉시 @Async 스냅샷. 단위 테스트에선 @Async가
+		// 컨테이너 없이 동기 실행되어 같은 스레드에서 snapshotNow가 돈다.
+		Session session = service.create("user-1");
+		service.join(session.id(), "user-1", UUID.randomUUID());
+		service.end(session.id(), "user-1", UUID.randomUUID());
+
+		assertThat(snapshotRepository.findLatest(session.id())).isPresent();
 	}
 }
