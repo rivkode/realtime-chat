@@ -1,7 +1,7 @@
 package com.realtime.chat.infrastructure.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.realtime.chat.application.broadcast.SessionEventBroadcast;
+import com.realtime.chat.application.broadcast.SessionChannelMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
@@ -60,9 +60,11 @@ public class SessionChannelSubscriber {
 
 	private void handle(UUID sessionId, Message message) {
 		try {
-			SessionEventBroadcast broadcast = redisObjectMapper.readValue(
-					message.getBody(), SessionEventBroadcast.class);
-			stompTemplate.convertAndSend("/topic/sessions/" + sessionId, broadcast);
+			// SessionChannelMessage는 sealed + Jackson polymorphic이라 kind discriminator로
+			// SessionEventBroadcast/PresenceBroadcast 자동 분기 deserialize.
+			SessionChannelMessage decoded = redisObjectMapper.readValue(
+					message.getBody(), SessionChannelMessage.class);
+			stompTemplate.convertAndSend("/topic/sessions/" + sessionId, decoded);
 		} catch (Exception ex) {
 			log.warn("Failed to dispatch redis message on session {}: {}", sessionId, ex.getMessage());
 		}

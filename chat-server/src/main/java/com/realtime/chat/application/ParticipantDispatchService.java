@@ -38,6 +38,7 @@ public class ParticipantDispatchService {
 	private final EventAppendService eventAppendService;
 	private final SessionChannelPublisher sessionChannelPublisher;
 	private final SnapshotApplicationService snapshotApplicationService;
+	private final PresenceService presenceService;
 
 	public ParticipantOutcome join(UUID sessionId, String userId, UUID clientEventId) {
 		Session session = sessionRepository.findById(sessionId)
@@ -50,6 +51,7 @@ public class ParticipantDispatchService {
 				new EventPayload.ParticipantJoined(userId), null);
 		if (!result.duplicate()) {
 			sessionChannelPublisher.publish(SessionEventBroadcast.of(result.event()));
+			presenceService.onJoin(sessionId, userId);
 		}
 		return new ParticipantOutcome(result.event(), result.duplicate());
 	}
@@ -63,6 +65,7 @@ public class ParticipantDispatchService {
 				new EventPayload.ParticipantLeft(userId), null);
 		if (!result.duplicate()) {
 			sessionChannelPublisher.publish(SessionEventBroadcast.of(result.event()));
+			presenceService.onLeave(sessionId, userId);
 			snapshotApplicationService.snapshotAsync(sessionId);
 		}
 		return new ParticipantOutcome(result.event(), result.duplicate());

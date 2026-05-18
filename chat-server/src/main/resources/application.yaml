@@ -14,3 +14,7 @@ server:
 
 chat:
   instance-id: ${CHAT_INSTANCE_ID:chat-server-local}
+
+presence:
+  # 클라이언트 heartbeat 주기(10초)의 3배. heartbeat가 멈추면 TTL 만료로 자연히 OFFLINE 판정(설계서 §8.3).
+  ttl-seconds: ${PRESENCE_TTL_SECONDS:30}

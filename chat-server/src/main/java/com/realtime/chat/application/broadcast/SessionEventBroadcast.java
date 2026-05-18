@@ -21,7 +21,8 @@ public record SessionEventBroadcast(
 		String actorUserId,
 		Map<String, Object> payload,
 		Instant serverTs
-) {
+) implements SessionChannelMessage {
+
 	public static SessionEventBroadcast of(Event event) {
 		return new SessionEventBroadcast(
 				event.id(),
