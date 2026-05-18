@@ -36,6 +36,7 @@ public class SessionApplicationService {
 	private final SessionRepository sessionRepository;
 	private final EventRepository eventRepository;
 	private final EventAppendService eventAppendService;
+	private final SnapshotApplicationService snapshotApplicationService;
 	private final Clock clock;
 
 	public Session create(String createdBy) {
@@ -67,6 +68,9 @@ public class SessionApplicationService {
 		if (!result.duplicate() && session.status() != SessionStatus.ENDED) {
 			session.end(result.event().serverTs());
 			sessionRepository.save(session);
+			// §12.3 trigger 1 — session_ended 즉시 스냅샷(@Async). 종료된 세션은 이후 이벤트가
+			// 더 쌓이지 않으므로, 이 스냅샷이 사실상 그 세션의 "완성본"이 된다.
+			snapshotApplicationService.snapshotAsync(sessionId);
 		}
 		return new EndOutcome(session, result.event());
 	}

@@ -31,8 +31,10 @@ class TimelineApplicationServiceTest {
 	private final InMemorySnapshotRepository snapshotRepository = new InMemorySnapshotRepository();
 	private final Clock fixedClock = Clock.fixed(Instant.parse("2026-05-18T15:00:00Z"), ZoneOffset.UTC);
 	private final EventAppendService eventAppendService = new EventAppendService(eventRepository, fixedClock);
+	private final SnapshotApplicationService snapshotApplicationService = new SnapshotApplicationService(
+			sessionRepository, snapshotRepository, eventRepository, fixedClock);
 	private final SessionApplicationService sessionService = new SessionApplicationService(
-			sessionRepository, eventRepository, eventAppendService, fixedClock);
+			sessionRepository, eventRepository, eventAppendService, snapshotApplicationService, fixedClock);
 	private final TimelineApplicationService timelineService = new TimelineApplicationService(
 			sessionRepository, snapshotRepository, eventRepository, fixedClock);
 
