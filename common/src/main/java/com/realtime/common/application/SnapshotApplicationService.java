@@ -1,4 +1,4 @@
-package com.realtime.api.application;
+package com.realtime.common.application;
 
 import com.realtime.common.domain.UuidV7;
 import com.realtime.common.domain.event.Event;

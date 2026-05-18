@@ -1,6 +1,6 @@
 package com.realtime.api.presentation;
 
-import com.realtime.api.application.SnapshotApplicationService;
+import com.realtime.common.application.SnapshotApplicationService;
 import com.realtime.api.presentation.dto.SnapshotResponse;
 import com.realtime.common.domain.session.Snapshot;
 import lombok.RequiredArgsConstructor;
