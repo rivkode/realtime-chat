@@ -354,6 +354,23 @@ async function getJson(path) {
       determinismOk,
       `snapshot msgs=${snapMsgIds.size}, timeline msgs=${tlNowMsgIds.size}`);
 
+    // [13] Actuator health — 3개 서버 모두 UP + components.mongo/redis UP (설계서 §15.1·§15.4)
+    const healths = await Promise.all([
+      fetch(`${API_URL}/actuator/health`).then((r) => r.json()).then((j) => ({ name: 'api-server', json: j })),
+      fetch(`${CHAT1_URL.replace('ws://', 'http://').replace('/ws', '')}/actuator/health`).then((r) => r.json()).then((j) => ({ name: 'chat-server-1', json: j })),
+      fetch(`${CHAT2_URL.replace('ws://', 'http://').replace('/ws', '')}/actuator/health`).then((r) => r.json()).then((j) => ({ name: 'chat-server-2', json: j })),
+    ]);
+    const apiH = healths[0].json;
+    const c1H = healths[1].json;
+    const c2H = healths[2].json;
+    const allUp = healths.every((h) => h.json.status === 'UP');
+    const apiMongoUp = apiH.components?.mongo?.status === 'UP';
+    const chatMongoUp = c1H.components?.mongo?.status === 'UP' && c2H.components?.mongo?.status === 'UP';
+    const chatRedisUp = c1H.components?.redis?.status === 'UP' && c2H.components?.redis?.status === 'UP';
+    record('Actuator /health — 3개 서버 UP + mongo/redis indicator UP',
+      allUp && apiMongoUp && chatMongoUp && chatRedisUp,
+      `api=${apiH.status}, chat1=${c1H.status}, chat2=${c2H.status}, mongo=${apiMongoUp && chatMongoUp}, redis=${chatRedisUp}`);
+
   } catch (err) {
     console.error('\n[FATAL]', err.stack || err);
     exitCode = 2;

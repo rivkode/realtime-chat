@@ -57,22 +57,20 @@ print(ok)
   sleep 1
 done
 
-echo "━━━ 3. api-server / chat-server-1·2 부팅 대기 (Spring context) ━━━"
-wait_port() {
+echo "━━━ 3. api-server / chat-server-1·2 부팅 대기 (actuator health) ━━━"
+wait_health() {
   local port="$1"; local name="$2"
-  for i in $(seq 1 60); do
-    if curl -s -o /dev/null --max-time 1 "http://localhost:${port}/sessions" 2>/dev/null \
-       || nc -z localhost "$port" 2>/dev/null; then
-      echo "  $name (:$port) READY"
-      return 0
-    fi
+  local code=""
+  for i in $(seq 1 90); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 "http://localhost:${port}/actuator/health" 2>/dev/null || echo "000")
+    if [ "$code" = "200" ]; then echo "  $name (:$port) HEALTHY"; return 0; fi
     sleep 1
   done
-  echo "  $name (:$port) TIMEOUT"; return 1
+  echo "  $name (:$port) TIMEOUT (last http=$code)"; return 1
 }
-wait_port 8080 'api-server'
-wait_port 8081 'chat-server-1'
-wait_port 8082 'chat-server-2'
+wait_health 8080 'api-server'
+wait_health 8081 'chat-server-1'
+wait_health 8082 'chat-server-2'
 
 echo "━━━ 4. npm install ━━━"
 cd e2e

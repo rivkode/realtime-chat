@@ -29,7 +29,7 @@ services:
       dockerfile: api-server/Dockerfile
     container_name: realtime-api-server
     environment:
-      MONGODB_URI: mongodb://mongodb:27017/realtime?uuidRepresentation=STANDARD
+      MONGODB_URI: mongodb://mongodb:27017/realtime?uuidRepresentation=STANDARD&waitQueueTimeoutMS=5000
       SERVER_PORT: 8080
     ports:
       - "8080:8080"
@@ -43,7 +43,7 @@ services:
       dockerfile: chat-server/Dockerfile
     container_name: realtime-chat-server-1
     environment:
-      MONGODB_URI: mongodb://mongodb:27017/realtime?uuidRepresentation=STANDARD
+      MONGODB_URI: mongodb://mongodb:27017/realtime?uuidRepresentation=STANDARD&waitQueueTimeoutMS=5000
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SERVER_PORT: 8081
@@ -62,7 +62,7 @@ services:
       dockerfile: chat-server/Dockerfile
     container_name: realtime-chat-server-2
     environment:
-      MONGODB_URI: mongodb://mongodb:27017/realtime?uuidRepresentation=STANDARD
+      MONGODB_URI: mongodb://mongodb:27017/realtime?uuidRepresentation=STANDARD&waitQueueTimeoutMS=5000
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SERVER_PORT: 8082
