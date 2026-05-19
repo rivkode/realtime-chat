@@ -146,36 +146,36 @@ class SessionStateReducerTest {
 	private Event join(String userId) {
 		EventPayload payload = new EventPayload.ParticipantJoined(userId);
 		return new Event(UuidV7.generate(), SESSION_ID, EventType.PARTICIPANT_JOINED,
-				userId, UUID.randomUUID(), payload, null, Instant.now());
+				userId, UUID.randomUUID(), payload, null, Instant.now(), null);
 	}
 
 	private Event participantLeft(String userId) {
 		EventPayload payload = new EventPayload.ParticipantLeft(userId);
 		return new Event(UuidV7.generate(), SESSION_ID, EventType.PARTICIPANT_LEFT,
-				userId, UUID.randomUUID(), payload, null, Instant.now());
+				userId, UUID.randomUUID(), payload, null, Instant.now(), null);
 	}
 
 	private Event message(String userId, String content) {
 		EventPayload payload = new EventPayload.MessageSent(content);
 		return new Event(UuidV7.generate(), SESSION_ID, EventType.MESSAGE_SENT,
-				userId, UUID.randomUUID(), payload, null, Instant.now());
+				userId, UUID.randomUUID(), payload, null, Instant.now(), null);
 	}
 
 	private Event messageEdited(String userId, UUID targetId, String content) {
 		EventPayload payload = new EventPayload.MessageEdited(targetId, content);
 		return new Event(UuidV7.generate(), SESSION_ID, EventType.MESSAGE_EDITED,
-				userId, UUID.randomUUID(), payload, null, Instant.now());
+				userId, UUID.randomUUID(), payload, null, Instant.now(), null);
 	}
 
 	private Event messageDeleted(String userId, UUID targetId) {
 		EventPayload payload = new EventPayload.MessageDeleted(targetId);
 		return new Event(UuidV7.generate(), SESSION_ID, EventType.MESSAGE_DELETED,
-				userId, UUID.randomUUID(), payload, null, Instant.now());
+				userId, UUID.randomUUID(), payload, null, Instant.now(), null);
 	}
 
 	private Event sessionEnded(String userId) {
 		EventPayload payload = new EventPayload.SessionEnded(userId);
 		return new Event(UuidV7.generate(), SESSION_ID, EventType.SESSION_ENDED,
-				userId, UUID.randomUUID(), payload, null, Instant.now());
+				userId, UUID.randomUUID(), payload, null, Instant.now(), null);
 	}
 }

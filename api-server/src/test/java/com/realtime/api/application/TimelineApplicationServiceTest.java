@@ -112,7 +112,7 @@ class TimelineApplicationServiceTest {
 				UuidV7.generate(), session.id(), com.realtime.common.domain.event.EventType.MESSAGE_SENT,
 				"user-1", UUID.randomUUID(),
 				new EventPayload.MessageSent("future"),
-				null, futureClock);
+				null, futureClock, null);
 		eventRepository.append(futureEvent);
 
 		TimelineResult atMidpoint = timelineService.restore(session.id(), midpoint);

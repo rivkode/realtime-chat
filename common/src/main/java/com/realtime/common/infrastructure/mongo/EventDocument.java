@@ -20,6 +20,9 @@ import java.util.UUID;
  *   <li>{@code {sessionId, type, _id}} — 메시지만 골라 최근 N개(§11 Q1)</li>
  *   <li>{@code {sessionId, serverTs}} — {@code timeline?at=} 시간 필터</li>
  * </ul>
+ *
+ * <p>{@code traceId}는 §14.2 추적 ID. 검색 성능보다 한 건 진단 시 GET으로 가져온 도큐먼트에서 그대로
+ * 확인할 용도라 인덱스는 두지 않는다.
  */
 @Document(collection = "events")
 @CompoundIndexes({
@@ -40,13 +43,14 @@ public class EventDocument {
 	private Map<String, Object> payload;
 	private Instant clientTs;
 	private Instant serverTs;
+	private String traceId;
 
 	public EventDocument() {
 	}
 
 	public EventDocument(UUID id, UUID sessionId, EventType type, String actorUserId,
 						 UUID clientEventId, Map<String, Object> payload,
-						 Instant clientTs, Instant serverTs) {
+						 Instant clientTs, Instant serverTs, String traceId) {
 		this.id = id;
 		this.sessionId = sessionId;
 		this.type = type;
@@ -55,6 +59,7 @@ public class EventDocument {
 		this.payload = payload;
 		this.clientTs = clientTs;
 		this.serverTs = serverTs;
+		this.traceId = traceId;
 	}
 
 	public UUID getId() { return id; }
@@ -65,4 +70,5 @@ public class EventDocument {
 	public Map<String, Object> getPayload() { return payload; }
 	public Instant getClientTs() { return clientTs; }
 	public Instant getServerTs() { return serverTs; }
+	public String getTraceId() { return traceId; }
 }

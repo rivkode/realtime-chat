@@ -28,7 +28,8 @@ class SessionEventBroadcastTest {
 				UUID.randomUUID(),
 				new EventPayload.MessageSent("hi"),
 				null,
-				Instant.parse("2026-05-18T20:00:00Z")
+				Instant.parse("2026-05-18T20:00:00Z"),
+				"trace-abc"
 		);
 
 		SessionEventBroadcast broadcast = SessionEventBroadcast.of(event);
@@ -39,6 +40,7 @@ class SessionEventBroadcastTest {
 		assertThat(broadcast.actorUserId()).isEqualTo("user-1");
 		assertThat(broadcast.payload()).containsEntry("content", "hi");
 		assertThat(broadcast.serverTs()).isEqualTo(event.serverTs());
+		assertThat(broadcast.traceId()).isEqualTo("trace-abc");
 	}
 
 	@Test
@@ -53,7 +55,8 @@ class SessionEventBroadcastTest {
 				UUID.randomUUID(),
 				new EventPayload.MessageSent("hello"),
 				null,
-				Instant.parse("2026-05-18T20:00:00Z")
+				Instant.parse("2026-05-18T20:00:00Z"),
+				"trace-xyz"
 		);
 		SessionEventBroadcast original = SessionEventBroadcast.of(event);
 
@@ -67,13 +70,14 @@ class SessionEventBroadcastTest {
 		assertThat(cast.type()).isEqualTo(original.type());
 		assertThat(cast.payload()).isEqualTo(original.payload());
 		assertThat(cast.serverTs()).isEqualTo(original.serverTs());
+		assertThat(cast.traceId()).isEqualTo("trace-xyz");
 	}
 
 	@Test
 	void presence_broadcast_round_trips_through_sealed_message() throws Exception {
 		PresenceBroadcast original = new PresenceBroadcast(
 				UUID.randomUUID(), "user-2", PresenceStatus.ONLINE,
-				Instant.parse("2026-05-18T20:00:00Z"));
+				Instant.parse("2026-05-18T20:00:00Z"), "trace-presence");
 
 		String json = objectMapper.writeValueAsString((SessionChannelMessage) original);
 		SessionChannelMessage deserialized = objectMapper.readValue(json, SessionChannelMessage.class);
@@ -83,5 +87,6 @@ class SessionEventBroadcastTest {
 		assertThat(cast.sessionId()).isEqualTo(original.sessionId());
 		assertThat(cast.userId()).isEqualTo("user-2");
 		assertThat(cast.status()).isEqualTo(PresenceStatus.ONLINE);
+		assertThat(cast.traceId()).isEqualTo("trace-presence");
 	}
 }

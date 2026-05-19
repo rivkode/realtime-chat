@@ -21,7 +21,8 @@ public final class EventDocumentMapper {
 				event.clientEventId(),
 				event.payload().toMap(),
 				event.clientTs(),
-				event.serverTs()
+				event.serverTs(),
+				event.traceId()
 		);
 	}
 
@@ -34,7 +35,8 @@ public final class EventDocumentMapper {
 				doc.getClientEventId(),
 				EventPayload.fromMap(doc.getType(), doc.getPayload()),
 				doc.getClientTs(),
-				doc.getServerTs()
+				doc.getServerTs(),
+				doc.getTraceId()
 		);
 	}
 }
