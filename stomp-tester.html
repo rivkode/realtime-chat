@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>STOMP Tester</title>
+    <style>
+        body{font-family:monospace;margin:1em;}
+        .row{margin:.4em 0;}
+        label{display:inline-block;width:120px;}
+        input{width:380px;padding:3px;}
+        button{padding:4px 10px;margin-right:6px;}
+        #log{height:340px;overflow:auto;border:1px solid #ccc;padding:6px;background:#fafafa;white-space:pre-wrap;font-size:12px;}
+        .tx{color:#0a0;} .rx{color:#06c;} .err{color:#c00;}
+    </style></head>
+<body>
+<h2>STOMP Tester — Realtime Chat</h2>
+<div class="row"><label>WS URL</label><input id="url" value="ws://localhost:8081/ws"></div>
+<div class="row"><label>X-User-Id</label><input id="userId" value="user-1"></div>
+<div class="row"><label>Session UUID</label><input id="sid"></div>
+<div class="row">
+    <button onclick="connect()">Connect</button>
+    <button onclick="join()">Join</button>
+    <button onclick="sendMsg()">Send msg</button>
+    <button onclick="heartbeat()">Heartbeat</button>
+    <button onclick="resume()">Resume (lastEventId)</button>
+    <button onclick="resumeNull()">Resume (null)</button>
+    <button onclick="leave()">Leave</button>
+    <button onclick="disconnect()">Disconnect</button>
+</div>
+<div class="row"><label>Last event ID</label><input id="lastEventId" placeholder="auto-filled on ACK, editable for stale-id test"></div>
+<div class="row"><label>Custom content</label><input id="content" value="hello"></div>
+<div id="log"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs/bundles/stomp.umd.min.js"></script>
+<script>
+    let client;
+    const log=(t,c='')=>{const el=document.getElementById('log');el.innerHTML+=`<span class="${c}">${t}</span>\n`;el.scrollTop=el.scrollHeight;};
+    const uuid=()=>crypto.randomUUID();
+
+    function connect(){
+      if(client){client.deactivate();}
+      client=new StompJs.Client({
+        brokerURL:document.getElementById('url').value,
+        // 끊겼을 때 자동 재연결 (5초). background tab throttle 등으로 끊겨도 자동 복구.
+        // reconnect 시 server 측 ConnectionRegistry가 새 simpSessionId로 등록되며 SUBSCRIBE 다시 일어남.
+        reconnectDelay:5000,
+        // server send 10s / server expects 30s 협상에 맞춤 (WebSocketStompConfig 참조).
+        // background throttle로 client heartbeat이 늦어도 30s 안에 도착하면 안 끊김.
+        heartbeatIncoming:10000,
+        heartbeatOutgoing:10000,
+        onConnect:()=>{
+          log('★ Connected to '+document.getElementById('url').value);
+          const sid=document.getElementById('sid').value;
+          client.subscribe(`/topic/sessions/${sid}`,m=>log('[TOPIC] '+m.body,'rx'));
+          client.subscribe('/user/queue/ack',m=>{
+            const a=JSON.parse(m.body);
+            document.getElementById('lastEventId').value=a.eventId;
+            log('[ACK] '+m.body,'rx');
+          });
+          client.subscribe('/user/queue/resume',m=>log('[RESUME] '+m.body,'rx'));
+        },
+        onStompError:e=>log('STOMP error '+e.headers.message+' / '+e.body,'err'),
+        onWebSocketError:e=>log('WS error '+e.message,'err'),
+        onDisconnect:()=>log('★ Disconnected'),
+      });
+      client.activate();
+    }
+    function disconnect(){client?.deactivate();}
+    const sid=()=>document.getElementById('sid').value;
+    const userId=()=>document.getElementById('userId').value;
+
+    function pub(dest,body,headers={}){
+      if(!client){log('!! Not connected — click [Connect] first.','err');return;}
+      if(!client.connected){log('!! Still connecting / disconnected — wait or click [Connect].','err');return;}
+      client.publish({destination:dest,body:JSON.stringify(body),headers});
+      log('→ '+dest+' '+JSON.stringify(body),'tx');
+    }
+    function join(){pub(`/app/sessions/${sid()}/join`,{userId:userId(),clientEventId:uuid()});}
+    function sendMsg(){pub(`/app/sessions/${sid()}/messages`,{clientEventId:uuid(),content:document.getElementById('content').value},{'X-User-Id':userId()});}
+    function heartbeat(){pub(`/app/sessions/${sid()}/heartbeat`,{userId:userId()});}
+    function resume(){pub(`/app/sessions/${sid()}/resume`,{lastEventId:document.getElementById('lastEventId').value||null});}
+    function resumeNull(){pub(`/app/sessions/${sid()}/resume`,{lastEventId:null});}
+    function leave(){pub(`/app/sessions/${sid()}/leave`,{userId:userId(),clientEventId:uuid()});}
+</script></body></html>

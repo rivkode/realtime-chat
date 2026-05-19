@@ -38,3 +38,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Node (e2e) ###
+e2e/node_modules/
+e2e/package-lock.json
+docker-compose.override.yml

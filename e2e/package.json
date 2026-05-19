@@ -1,0 +1,15 @@
+{
+  "name": "realtime-chat-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node scenario.js"
+  },
+  "dependencies": {
+    "@stomp/stompjs": "^7.0.0",
+    "mongodb": "^6.10.0",
+    "uuid": "^10.0.0",
+    "ws": "^8.18.0"
+  }
+}

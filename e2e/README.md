@@ -1,0 +1,98 @@
+# Functional E2E — 자동 시나리오 12개
+
+설계서의 핵심 기능을 한 번에 검증하는 Node.js 기반 자동 테스트.
+
+## 검증 매트릭스
+
+| # | 시나리오 | 설계서 | 검증 방법 |
+|---|---|---|---|
+| 1 | 세션 생성 (POST /sessions) | §16 | `sessions` + SESSION_CREATED event INSERT |
+| 2 | WS 연결 + SUBSCRIBE × 3 (양 서버) | §5·§8.4 | A@8081, B@8082 STOMP CONNECTED |
+| 3 | Join × 2 + 양쪽 라이브 전달 | §5.3·§8.2 | events PARTICIPANT_JOINED ×2, 상대 탭에 도착 |
+| 4 | 메시지 20건 양방향 + 시간순 정렬 | §8.1·§9.2 | events MESSAGE_SENT ×20, `_id` ASC 와 송신 순서 일치 |
+| 5 | 멱등 (같은 clientEventId × 2) | §9.1 | events INSERT 1, ACK 2 (같은 eventId) |
+| 6 | Edit (MESSAGE_EDITED) | §6.2 + §10.2 | timeline content 갱신, status=EDITED |
+| 7 | Delete (MESSAGE_DELETED) | §6.2 + §10.2 | timeline status=DELETED (soft-delete) |
+| 8 | Resume INCREMENTAL | §9.3 | mode=INCREMENTAL, lastEventId 이후 events |
+| 9 | Resume SNAPSHOT (null) | §9.3 | mode=SNAPSHOT, state 시간순 |
+| 10 | Timeline at=과거시점 | §10 | 그 시점까지 메시지만 |
+| 11 | Leave + 즉시 스냅샷 | §8.2 + §12.3 trigger 1 | PARTICIPANT_LEFT event + snapshots +1 |
+| 12 | 결정론 (스냅샷 ≡ 같은 시점 timeline) | §10 | 두 결과 메시지 집합 동일 |
+
+## 실행
+
+```bash
+# 컨테이너가 이미 떠 있을 때
+./e2e/run.sh
+
+# 깨끗한 상태로 재빌드부터
+./e2e/run.sh --rebuild
+
+# 데이터만 청소 (재빌드 없이)
+./e2e/run.sh --restart
+```
+
+처음 실행 시 `npm install` 자동 수행 (~10초). 이후 실행은 `node_modules` 캐시.
+
+## 환경 변수 (기본값)
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `API_URL` | `http://localhost:8080` | api-server REST |
+| `CHAT1_URL` | `ws://localhost:8081/ws` | chat-server-1 STOMP |
+| `CHAT2_URL` | `ws://localhost:8082/ws` | chat-server-2 STOMP |
+| `MONGO_URI` | `mongodb://localhost:27017/realtime` | Mongo 검증용 (Node driver는 BSON UUID class로 자동 STANDARD) |
+
+## 출력
+
+```
+[01] 세션 생성 (POST /sessions) ......................... PASS
+[02] WS 연결 + SUBSCRIBE × 3 (양 서버) ................... PASS
+... (12개)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   요약: 12개 시나리오 · 12 PASS · 0 FAIL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+PASS = exit 0, 하나라도 FAIL = exit 1, 시스템 오류(인프라 다운 등) = exit 2.
+
+## 어디서 실패하는지 진단
+
+각 라인의 우측에 핵심 수치가 그대로 노출 (`events=2/2`, `inserts=1, acks=2` 등). FAIL이면 끝에 실패 목록만 다시 출력.
+
+추가 진단:
+```bash
+# events 시간순
+mongosh "mongodb://localhost:27017/realtime?uuidRepresentation=STANDARD" --eval '
+  db.events.find().sort({_id:1}).forEach(e => print(e._id.toString().substring(0,13), e.type.padEnd(20), e.payload?.content || e.payload?.userId || ""));
+'
+
+# snapshots 확인
+mongosh "mongodb://localhost:27017/realtime?uuidRepresentation=STANDARD" --eval '
+  db.snapshots.find().sort({snapshotAt:-1}).forEach(s => print(s._id.toString().substring(0,13), "upTo:", s.upToEventId.toString().substring(0,13), "msgs:", s.state.messages.length));
+'
+
+# Redis presence
+docker exec realtime-redis redis-cli KEYS 'presence:*'
+```
+
+자세한 페이로드·STOMP frame은 프로젝트 루트 `sample-payloads.md` 참조.
+
+## 도구 요구사항
+
+- Docker 28+ / Docker Compose v2
+- Node.js 18+ (Node 20+ 권장 — Node 18은 `fetch` 도입 시점)
+- macOS 또는 Linux (run.sh는 bash)
+
+## 의존성 (npm)
+
+| 패키지 | 용도 |
+|---|---|
+| `@stomp/stompjs` | STOMP 1.2 클라이언트 |
+| `ws` | Node용 WebSocket polyfill (stompjs가 사용) |
+| `uuid` | clientEventId 발급 |
+| `mongodb` | 검증용 Mongo driver |
+
+## 확장
+
+새 시나리오를 추가하려면 `scenario.js`의 `try` 블록 끝에 항목을 추가하고 `record(name, pass, detail)` 호출. 검증은 mongo 쿼리·STOMP 응답 양쪽으로 가능.

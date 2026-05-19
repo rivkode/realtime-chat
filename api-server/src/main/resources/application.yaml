@@ -3,7 +3,10 @@ spring:
     name: api-server
   data:
     mongodb:
-      uri: ${MONGODB_URI:mongodb://localhost:27017/realtime}
+      # uuidRepresentation=STANDARD가 필수 — UUIDv7 _id를 BSON subtype 4(byte-by-byte 비교가
+      # timestamp 순서가 됨)로 저장. 디폴트(JAVA_LEGACY, subtype 3)는 long의 byte order를 reverse해
+      # _id 정렬이 random처럼 깨진다(설계서 §9.2 정렬 기준 위반).
+      uri: ${MONGODB_URI:mongodb://localhost:27017/realtime?uuidRepresentation=STANDARD}
       auto-index-creation: true
 
 server:
