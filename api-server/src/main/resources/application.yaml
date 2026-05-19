@@ -6,11 +6,26 @@ spring:
       # uuidRepresentation=STANDARD가 필수 — UUIDv7 _id를 BSON subtype 4(byte-by-byte 비교가
       # timestamp 순서가 됨)로 저장. 디폴트(JAVA_LEGACY, subtype 3)는 long의 byte order를 reverse해
       # _id 정렬이 random처럼 깨진다(설계서 §9.2 정렬 기준 위반).
-      uri: ${MONGODB_URI:mongodb://localhost:27017/realtime?uuidRepresentation=STANDARD}
+      # waitQueueTimeoutMS=5000 — 커넥션 풀 고갈 시 5초 안에 못 얻으면 fail-fast(설계서 §15.2).
+      # 디폴트는 무한 대기라 DB가 느려질 때 요청이 무한히 쌓여 전체 서버가 함께 죽는다.
+      uri: ${MONGODB_URI:mongodb://localhost:27017/realtime?uuidRepresentation=STANDARD&waitQueueTimeoutMS=5000}
       auto-index-creation: true
 
 server:
   port: ${SERVER_PORT:8080}
+
+# Actuator (설계서 §15.1) — /actuator/health가 로드 밸런서 헬스체크의 진입점.
+# Mongo·Redis indicator는 starter가 클래스패스에 있으면 자동 등록.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always       # 개발/검증 편의. 운영 시 when-authorized로 좁혀야 함.
+      probes:
+        enabled: true            # /actuator/health/liveness, /actuator/health/readiness
 
 snapshot:
   # 마지막 스냅샷 이후 이벤트가 이 값을 초과하면 스케줄러가 새 스냅샷을 만든다(설계서 §12.3).
