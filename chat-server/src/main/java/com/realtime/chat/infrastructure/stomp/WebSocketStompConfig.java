@@ -1,6 +1,7 @@
 package com.realtime.chat.infrastructure.stomp;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
@@ -9,6 +10,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 /**
  * STOMP/WebSocket 설정(설계서 §5·§8.4).
@@ -20,16 +22,25 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  *   <li>서버 → 송신자: {@code SEND /user/queue/ack} (멱등 ACK)</li>
  * </ul>
  *
- * <p>STOMP 프로토콜 heartbeat 활성화 — presence(§8.3 후속 PR)와 연결 생사 판정에 사용.
- * 우리는 simple broker만 쓰므로 외부 메시지 브로커는 두지 않는다 — Redis Pub/Sub은
- * STOMP broker 밖에서 별도로 흐른다(§5.3).
+ * <p>STOMP 프로토콜 heartbeat — 두 timeout을 비대칭으로 둔다:
+ * <ul>
+ *   <li><b>server send {@code 10s}</b> — 서버가 매 10초 빈 frame을 client로 보내 keep-alive.
+ *       client의 WebSocket idle도 함께 reset된다.</li>
+ *   <li><b>server expects from client {@code 30s}</b> — 브라우저가 background tab에서
+ *       {@code setInterval}을 throttle(Chrome 30~60s)할 때 client→server heartbeat이 늦어져도
+ *       서버가 dead로 오판하지 않게 마진을 둔다.</li>
+ * </ul>
+ *
+ * <p>{@link #createWebSocketContainer()}로 Tomcat WebSocket의 session idle timeout을 0(disabled)
+ * 로 설정 — STOMP heartbeat이 keep-alive를 충분히 수행하므로 idle timeout이 끼어들 필요가 없다.
  */
 @Configuration
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
 public class WebSocketStompConfig implements WebSocketMessageBrokerConfigurer {
 
-	private static final long HEARTBEAT_INTERVAL_MS = 10_000L;
+	private static final long SERVER_HEARTBEAT_INTERVAL_MS = 10_000L;
+	private static final long CLIENT_HEARTBEAT_TIMEOUT_MS = 30_000L;
 
 	private final SimpSessionUserChannelInterceptor simpSessionUserChannelInterceptor;
 
@@ -45,14 +56,25 @@ public class WebSocketStompConfig implements WebSocketMessageBrokerConfigurer {
 
 	@Override
 	public void configureMessageBroker(MessageBrokerRegistry registry) {
-		// 클라이언트 → 서버 메시지 prefix
 		registry.setApplicationDestinationPrefixes("/app");
-		// 서버 → 클라이언트 broadcast/유저 destination prefix
 		registry.enableSimpleBroker("/topic", "/queue")
-				.setHeartbeatValue(new long[]{HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS})
+				.setHeartbeatValue(new long[]{SERVER_HEARTBEAT_INTERVAL_MS, CLIENT_HEARTBEAT_TIMEOUT_MS})
 				.setTaskScheduler(heartbeatScheduler());
-		// /user/queue/... destination prefix
 		registry.setUserDestinationPrefix("/user");
+	}
+
+	/**
+	 * Tomcat WebSocket session의 idle timeout을 0(disabled)로 설정. STOMP heartbeat이
+	 * keep-alive를 담당하므로 별도 idle timer는 끼어들지 않아야 한다 — 두 timer가 부정합으로
+	 * 끊기는 사례 방지.
+	 */
+	@Bean
+	public ServletServerContainerFactoryBean createWebSocketContainer() {
+		ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
+		container.setMaxSessionIdleTimeout(0L);
+		container.setMaxTextMessageBufferSize(64 * 1024);
+		container.setMaxBinaryMessageBufferSize(64 * 1024);
+		return container;
 	}
 
 	private TaskScheduler heartbeatScheduler() {
