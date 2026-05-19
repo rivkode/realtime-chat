@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 설계서 §14.1 — 구조화 JSON 로그. api-server/logback-spring.xml과 동일 구조. -->
+<configuration scan="false">
+    <springProperty scope="context" name="appName" source="spring.application.name"/>
+    <springProperty scope="context" name="instanceId" source="chat.instance-id" defaultValue="chat-server-local"/>
+
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${appName}","instance":"${instanceId}"}</customFields>
+            <includeMdcKeyName>sessionId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>eventId</includeMdcKeyName>
+            <includeMdcKeyName>connectionId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <fieldNames>
+                <timestamp>ts</timestamp>
+                <message>msg</message>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <version>[ignore]</version>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <logger name="org.springframework.web.socket" level="INFO"/>
+    <logger name="org.mongodb.driver" level="WARN"/>
+    <logger name="io.lettuce" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="JSON_CONSOLE"/>
+    </root>
+</configuration>

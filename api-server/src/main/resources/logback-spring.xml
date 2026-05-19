@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  설계서 §14.1 — 구조화 JSON 로그.
+
+  모든 라인이 JSON 한 줄로 stdout에 찍힌다. MDC에 든 키들이 자동으로 JSON 필드로 노출되어
+  특정 세션/유저/추적 단위로 필터링하기 쉽다.
+
+  운영 환경에서는 stdout을 Fluent Bit/Promtail이 수집해 Elasticsearch/Loki로 보내는 패턴.
+  로컬에서는 docker compose logs로 그대로 본다.
+-->
+<configuration scan="false">
+    <springProperty scope="context" name="appName" source="spring.application.name"/>
+
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${appName}"}</customFields>
+            <!-- MDC 키들을 JSON 최상위 필드로 노출 (§14.1). -->
+            <includeMdcKeyName>sessionId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>eventId</includeMdcKeyName>
+            <includeMdcKeyName>connectionId</includeMdcKeyName>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <fieldNames>
+                <timestamp>ts</timestamp>
+                <message>msg</message>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <version>[ignore]</version>
+            </fieldNames>
+        </encoder>
+    </appender>
+
+    <logger name="org.springframework.web.socket" level="INFO"/>
+    <logger name="org.mongodb.driver" level="WARN"/>
+    <logger name="io.lettuce" level="WARN"/>
+
+    <root level="INFO">
+        <appender-ref ref="JSON_CONSOLE"/>
+    </root>
+</configuration>

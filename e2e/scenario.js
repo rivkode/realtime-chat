@@ -371,6 +371,26 @@ async function getJson(path) {
       allUp && apiMongoUp && chatMongoUp && chatRedisUp,
       `api=${apiH.status}, chat1=${c1H.status}, chat2=${c2H.status}, mongo=${apiMongoUp && chatMongoUp}, redis=${chatRedisUp}`);
 
+    // [14] Prometheus 메트릭 — 단계별 카운터 + 처리 지연 + 활성 세션 Gauge (§14.3)
+    const prom1 = await fetch(`${CHAT1_URL.replace('ws://', 'http://').replace('/ws', '')}/actuator/prometheus`).then((r) => r.text());
+    const prom2 = await fetch(`${CHAT2_URL.replace('ws://', 'http://').replace('/ws', '')}/actuator/prometheus`).then((r) => r.text());
+    const promAll = prom1 + '\n' + prom2;
+    const counterSum = (name) => {
+      const re = new RegExp(`^${name.replace(/\./g, '_')}(?:_total)?\\{[^}]*\\}\\s+(\\d+(?:\\.\\d+)?)`, 'gm');
+      let total = 0; let m;
+      while ((m = re.exec(promAll)) !== null) total += parseFloat(m[1]);
+      return total;
+    };
+    const received  = counterSum('chat_event_received');
+    const persisted = counterSum('chat_event_persisted');
+    const published = counterSum('chat_event_published');
+    const delivered = counterSum('chat_event_delivered');
+    const dispatchTimerPresent = /^chat_message_dispatch_seconds_count\b/m.test(promAll);
+    const gaugePresent          = /^chat_websocket_active_sessions\b/m.test(promAll);
+    record('Prometheus — 단계별 카운터 + 처리 지연 + 활성 Gauge',
+      received > 0 && persisted > 0 && published > 0 && delivered > 0 && dispatchTimerPresent && gaugePresent,
+      `received=${received}, persisted=${persisted}, published=${published}, delivered=${delivered}, timer=${dispatchTimerPresent}, gauge=${gaugePresent}`);
+
   } catch (err) {
     console.error('\n[FATAL]', err.stack || err);
     exitCode = 2;

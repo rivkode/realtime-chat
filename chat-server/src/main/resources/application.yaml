@@ -24,12 +24,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health, info, prometheus, metrics
   endpoint:
     health:
       show-details: always
       probes:
         enabled: true
+  metrics:
+    tags:
+      service: chat-server
+      instance: ${CHAT_INSTANCE_ID:chat-server-local}
 
 presence:
   # 클라이언트 heartbeat 주기(10초)의 3배. heartbeat가 멈추면 TTL 만료로 자연히 OFFLINE 판정(설계서 §8.3).
