@@ -2,6 +2,7 @@ package com.realtime.chat.infrastructure.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.realtime.chat.application.broadcast.SessionChannelMessage;
+import com.realtime.chat.infrastructure.metrics.ChatMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
@@ -34,6 +35,7 @@ public class SessionChannelSubscriber {
 	private final RedisMessageListenerContainer container;
 	private final SimpMessagingTemplate stompTemplate;
 	private final ObjectMapper redisObjectMapper;
+	private final ChatMetrics metrics;
 
 	/** sessionId → 등록된 (listener, topic) 쌍. 중복 구독 방지. */
 	private final ConcurrentHashMap<UUID, Subscription> subscriptions = new ConcurrentHashMap<>();
@@ -65,7 +67,9 @@ public class SessionChannelSubscriber {
 			SessionChannelMessage decoded = redisObjectMapper.readValue(
 					message.getBody(), SessionChannelMessage.class);
 			stompTemplate.convertAndSend("/topic/sessions/" + sessionId, decoded);
+			metrics.recordDelivered(true);  // §14.3 단계별 카운터 — 수신측 push 성공
 		} catch (Exception ex) {
+			metrics.recordDelivered(false);
 			log.warn("Failed to dispatch redis message on session {}: {}", sessionId, ex.getMessage());
 		}
 	}

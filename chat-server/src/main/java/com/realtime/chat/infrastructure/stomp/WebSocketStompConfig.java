@@ -43,6 +43,7 @@ public class WebSocketStompConfig implements WebSocketMessageBrokerConfigurer {
 	private static final long CLIENT_HEARTBEAT_TIMEOUT_MS = 30_000L;
 
 	private final SimpSessionUserChannelInterceptor simpSessionUserChannelInterceptor;
+	private final StompMdcChannelInterceptor stompMdcChannelInterceptor;
 
 	@Override
 	public void registerStompEndpoints(StompEndpointRegistry registry) {
@@ -51,7 +52,10 @@ public class WebSocketStompConfig implements WebSocketMessageBrokerConfigurer {
 
 	@Override
 	public void configureClientInboundChannel(ChannelRegistration registration) {
-		registration.interceptors(simpSessionUserChannelInterceptor);
+		// SimpSessionUser는 CONNECT에서 Principal 설정 — 이후 MDC interceptor가 헤더를 읽을 수 있도록 먼저.
+		// MDC interceptor는 preSend에서 채우고 afterSendCompletion에서 비운다 — 모든 후속 처리(컨트롤러
+		// 호출 포함) 로그에 자동 첨부.
+		registration.interceptors(simpSessionUserChannelInterceptor, stompMdcChannelInterceptor);
 	}
 
 	@Override
