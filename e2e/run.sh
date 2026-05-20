@@ -9,9 +9,11 @@
 #   5. scenario.js 실행 → PASS/FAIL 출력
 #
 # 사용:
-#   ./e2e/run.sh            # 컨테이너가 이미 떠 있다고 가정, 시나리오만
+#   ./e2e/run.sh            # 컨테이너가 이미 떠 있다고 가정, functional 시나리오만
 #   ./e2e/run.sh --rebuild  # docker compose down -v + up --build (깨끗한 상태)
 #   ./e2e/run.sh --restart  # down -v + up (rebuild 없이 데이터만 청소)
+#   ./e2e/run.sh --load     # functional 대신 부하 테스트(load.js) 실행 (설계서 §18)
+#                           # --rebuild/--restart와 조합 가능: ./e2e/run.sh --rebuild --load
 
 set -euo pipefail
 
@@ -19,11 +21,13 @@ cd "$(dirname "$0")/.."   # 프로젝트 루트로
 
 REBUILD=0
 RESTART=0
+LOAD=0
 for arg in "$@"; do
   case "$arg" in
     --rebuild) REBUILD=1 ;;
     --restart) RESTART=1 ;;
-    *) echo "usage: $0 [--rebuild|--restart]" >&2; exit 1 ;;
+    --load)    LOAD=1 ;;
+    *) echo "usage: $0 [--rebuild|--restart] [--load]" >&2; exit 1 ;;
   esac
 done
 
@@ -80,6 +84,12 @@ else
   echo "  node_modules 이미 존재 — skip"
 fi
 
-echo "━━━ 5. 시나리오 실행 ━━━"
-echo
-exec node scenario.js
+if [ "$LOAD" -eq 1 ]; then
+  echo "━━━ 5. 부하 테스트 실행 (load.js, 설계서 §18) ━━━"
+  echo
+  exec node load.js
+else
+  echo "━━━ 5. functional 시나리오 실행 (scenario.js) ━━━"
+  echo
+  exec node scenario.js
+fi

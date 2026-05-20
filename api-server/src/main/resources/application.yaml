@@ -32,7 +32,10 @@ management:
 
 snapshot:
   # 마지막 스냅샷 이후 이벤트가 이 값을 초과하면 스케줄러가 새 스냅샷을 만든다(설계서 §12.3).
-  # 잠정 500. 부하 테스트로 "처음부터 복원 시 1초"를 넘는 지점을 측정해 확정 예정.
-  threshold: ${SNAPSHOT_THRESHOLD:500}
+  # 부하 테스트(e2e/load.js, 설계서 §18) 측정 결과로 조정:
+  #   2000건 36ms · 5000건 42ms · 10000건 65ms · 20000건 141ms — 1초 도달은 선형 외삽 ~167,000건.
+  # 잠정 500은 과도하게 보수적이라 5000으로 상향(복원 ~42ms로 1초 SLA에 충분히 안전, 스냅샷 빈도 1/10).
+  # 로컬 측정이므로 운영(네트워크·도큐먼트 크기·샤딩)에서 재측정 후 추가 조정.
+  threshold: ${SNAPSHOT_THRESHOLD:5000}
   scheduler:
     interval-ms: ${SNAPSHOT_SCHEDULER_INTERVAL_MS:3600000}
