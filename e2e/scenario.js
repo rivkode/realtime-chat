@@ -391,6 +391,39 @@ async function getJson(path) {
       received > 0 && persisted > 0 && published > 0 && delivered > 0 && dispatchTimerPresent && gaugePresent,
       `received=${received}, persisted=${persisted}, published=${published}, delivered=${delivered}, timer=${dispatchTimerPresent}, gauge=${gaugePresent}`);
 
+    // [15] traceId 전파 (§14.2) — 두 경로 검증
+    //   (a) chat-server: STOMP 메시지가 발급한 traceId가 events 도큐먼트 traceId 필드에 박힘
+    //   (b) api-server: X-Trace-Id 헤더로 보낸 값이 events 도큐먼트에 그대로 박힘 + 응답 헤더로 회신
+    const messageDocs = await events.find({ sessionId: sessionUuid, type: 'MESSAGE_SENT' })
+      .sort({ _id: 1 }).limit(10).toArray();
+    const allStompMsgsHaveTraceId = messageDocs.length > 0 &&
+      messageDocs.every((d) => typeof d.traceId === 'string' && /^[0-9a-fA-F-]{36}$/.test(d.traceId));
+    const distinctTraceCount = new Set(messageDocs.map((d) => d.traceId)).size;
+    const eachMessageOwnTrace = distinctTraceCount === messageDocs.length; // 매 STOMP 메시지마다 새 trace
+
+    // (b) REST 경로 — X-Trace-Id 헤더로 명시 전송
+    const explicitTrace = '11111111-2222-3333-4444-555555555555';
+    const restCid = uuid();
+    const restRes = await fetch(`${API_URL}/sessions/${sessionId}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Trace-Id': explicitTrace },
+      body: JSON.stringify({
+        type: 'MESSAGE_SENT',
+        actorUserId: 'user-1',
+        clientEventId: restCid,
+        payload: { content: 'trace-test' },
+      }),
+    });
+    const respHeaderTrace = restRes.headers.get('X-Trace-Id');
+    const restBody = await restRes.json();
+    const restEventDoc = await events.findOne({ _id: new UUID(restBody.eventId) });
+    const restTraceMatches = restEventDoc?.traceId === explicitTrace;
+    const headerEchoMatches = respHeaderTrace === explicitTrace;
+
+    record('traceId 전파 — STOMP 발급(매건 다름) + REST 헤더 echo + events 도큐먼트 박힘',
+      allStompMsgsHaveTraceId && eachMessageOwnTrace && restTraceMatches && headerEchoMatches,
+      `stomp:${messageDocs.length}건모두UUID=${allStompMsgsHaveTraceId}, distinctTrace=${distinctTraceCount}/${messageDocs.length}, restEcho=${headerEchoMatches}, restMongo=${restTraceMatches}`);
+
   } catch (err) {
     console.error('\n[FATAL]', err.stack || err);
     exitCode = 2;

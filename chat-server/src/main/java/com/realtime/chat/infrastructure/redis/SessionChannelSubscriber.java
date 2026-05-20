@@ -1,9 +1,13 @@
 package com.realtime.chat.infrastructure.redis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.realtime.chat.application.broadcast.PresenceBroadcast;
 import com.realtime.chat.application.broadcast.SessionChannelMessage;
+import com.realtime.chat.application.broadcast.SessionEventBroadcast;
 import com.realtime.chat.infrastructure.metrics.ChatMetrics;
+import com.realtime.common.logging.TraceMdcKeys;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
@@ -66,12 +70,30 @@ public class SessionChannelSubscriber {
 			// SessionEventBroadcast/PresenceBroadcast 자동 분기 deserialize.
 			SessionChannelMessage decoded = redisObjectMapper.readValue(
 					message.getBody(), SessionChannelMessage.class);
-			stompTemplate.convertAndSend("/topic/sessions/" + sessionId, decoded);
-			metrics.recordDelivered(true);  // §14.3 단계별 카운터 — 수신측 push 성공
+			// §14.2 — payload에 동봉된 traceId를 MDC에 복원해 이 push 단계 로그가 같은 trace로 묶이게.
+			String traceId = extractTraceId(decoded);
+			boolean traceSet = false;
+			if (traceId != null) {
+				MDC.put(TraceMdcKeys.TRACE_ID, traceId);
+				traceSet = true;
+			}
+			try {
+				stompTemplate.convertAndSend("/topic/sessions/" + sessionId, decoded);
+				metrics.recordDelivered(true);  // §14.3 단계별 카운터 — 수신측 push 성공
+			} finally {
+				if (traceSet) MDC.remove(TraceMdcKeys.TRACE_ID);
+			}
 		} catch (Exception ex) {
 			metrics.recordDelivered(false);
 			log.warn("Failed to dispatch redis message on session {}: {}", sessionId, ex.getMessage());
 		}
+	}
+
+	private String extractTraceId(SessionChannelMessage m) {
+		return switch (m) {
+			case SessionEventBroadcast e -> e.traceId();
+			case PresenceBroadcast p -> p.traceId();
+		};
 	}
 
 	private record Subscription(MessageListener listener, Topic topic) {

@@ -5,7 +5,9 @@ import com.realtime.common.domain.event.DuplicateClientEventIdException;
 import com.realtime.common.domain.event.Event;
 import com.realtime.common.domain.event.EventPayload;
 import com.realtime.common.domain.event.EventRepository;
+import com.realtime.common.logging.TraceMdcKeys;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 
 import java.time.Clock;
@@ -22,6 +24,10 @@ import java.util.UUID;
  *   <li>{@code {sessionId, clientEventId}} unique 충돌 시 기존 이벤트를 조회해 멱등 ACK로 반환(§9.1)</li>
  * </ol>
  * "무시했다"가 아니라 "이미 처리됐고 결과는 이것"이라고 알려준다.
+ *
+ * <p>{@code traceId}는 MDC({@link TraceMdcKeys#TRACE_ID})에서 읽어 Event에 박는다(§14.2). 호출자
+ * (REST controller·STOMP handler 등)가 진입 시점에 MDC를 채워두므로 application 서비스는 추가
+ * 인자를 받지 않아도 같은 trace로 묶인다.
  */
 @Service
 @RequiredArgsConstructor
@@ -33,6 +39,7 @@ public class EventAppendService {
 	public AppendResult append(UUID sessionId, String actorUserId, UUID clientEventId,
 							   EventPayload payload, Instant clientTs) {
 		Instant serverTs = clock.instant();
+		String traceId = MDC.get(TraceMdcKeys.TRACE_ID);
 		Event event = new Event(
 				UuidV7.generate(),
 				sessionId,
@@ -41,7 +48,8 @@ public class EventAppendService {
 				clientEventId,
 				payload,
 				clientTs,
-				serverTs
+				serverTs,
+				traceId
 		);
 		try {
 			Event stored = eventRepository.append(event);

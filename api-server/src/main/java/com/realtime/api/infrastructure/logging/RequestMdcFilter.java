@@ -1,5 +1,6 @@
 package com.realtime.api.infrastructure.logging;
 
+import com.realtime.common.logging.TraceMdcKeys;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,12 +17,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * REST 요청마다 MDC에 {@code requestId}와 (URL에서 추출되면) {@code sessionId}를 박는다(§14.1).
+ * REST 요청마다 MDC에 {@code requestId/sessionId/traceId}를 박는다(§14.1, §14.2).
  *
  * <ul>
- *   <li>클라이언트가 {@code X-Request-Id} 헤더를 보내면 그것을 잇고, 없으면 새 UUID 발급</li>
- *   <li>{@code /sessions/{id}/...} 형태 URL에서 sessionId 추출 → 그 요청에 관여한 모든 로그가
- *       같은 sessionId로 묶여 검색 가능</li>
+ *   <li>{@code X-Request-Id} — 요청 단위 식별자. 없으면 새 UUID 발급. 응답 헤더에 회신.</li>
+ *   <li>{@code X-Trace-Id} — 한 메시지의 전체 경로 추적 ID(§14.2). 없으면 새 UUID 발급.
+ *       이 요청이 POST /sessions/{id}/events라면 그 이벤트가 events 도큐먼트에 같은 traceId로 저장된다.</li>
+ *   <li>{@code /sessions/{id}/...} URL에서 sessionId 추출</li>
  * </ul>
  */
 @Component
@@ -37,19 +39,27 @@ public class RequestMdcFilter extends OncePerRequestFilter {
 		if (requestId == null || requestId.isBlank()) {
 			requestId = UUID.randomUUID().toString();
 		}
-		MDC.put("requestId", requestId);
+		MDC.put(TraceMdcKeys.REQUEST_ID, requestId);
 		response.setHeader("X-Request-Id", requestId);
+
+		String traceId = request.getHeader("X-Trace-Id");
+		if (traceId == null || traceId.isBlank()) {
+			traceId = UUID.randomUUID().toString();
+		}
+		MDC.put(TraceMdcKeys.TRACE_ID, traceId);
+		response.setHeader("X-Trace-Id", traceId);
 
 		String sessionId = extractSessionId(request.getRequestURI());
 		if (sessionId != null) {
-			MDC.put("sessionId", sessionId);
+			MDC.put(TraceMdcKeys.SESSION_ID, sessionId);
 		}
 
 		try {
 			chain.doFilter(request, response);
 		} finally {
-			MDC.remove("requestId");
-			MDC.remove("sessionId");
+			MDC.remove(TraceMdcKeys.REQUEST_ID);
+			MDC.remove(TraceMdcKeys.TRACE_ID);
+			MDC.remove(TraceMdcKeys.SESSION_ID);
 		}
 	}
 
