@@ -48,6 +48,8 @@ services:
       REDIS_PORT: 6379
       SERVER_PORT: 8081
       CHAT_INSTANCE_ID: chat-server-1
+      # 로컬 e2e용 빠른 self-healing 주기 (운영 default는 30s)
+      REDIS_SELF_HEALING_INTERVAL_MS: "3000"
     ports:
       - "8081:8081"
     depends_on:
@@ -67,6 +69,7 @@ services:
       REDIS_PORT: 6379
       SERVER_PORT: 8082
       CHAT_INSTANCE_ID: chat-server-2
+      REDIS_SELF_HEALING_INTERVAL_MS: "3000"
     ports:
       - "8082:8082"
     depends_on:
