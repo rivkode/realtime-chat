@@ -16,6 +16,7 @@ const { Client } = require('@stomp/stompjs');
 const WebSocket = require('ws');
 const { v4: uuid } = require('uuid');
 const { MongoClient, UUID } = require('mongodb');
+const { execSync } = require('child_process');
 
 const API_URL = process.env.API_URL || 'http://localhost:8080';
 const CHAT1_URL = process.env.CHAT1_URL || 'ws://localhost:8081/ws';
@@ -423,6 +424,49 @@ async function getJson(path) {
     record('traceId 전파 — STOMP 발급(매건 다름) + REST 헤더 echo + events 도큐먼트 박힘',
       allStompMsgsHaveTraceId && eachMessageOwnTrace && restTraceMatches && headerEchoMatches,
       `stomp:${messageDocs.length}건모두UUID=${allStompMsgsHaveTraceId}, distinctTrace=${distinctTraceCount}/${messageDocs.length}, restEcho=${headerEchoMatches}, restMongo=${restTraceMatches}`);
+
+    // [16] Redis stop 중 graceful degradation (설계서 §15.4)
+    // - 메시지 INSERT는 계속됨
+    // - publish는 실패 (Lettuce 2s timeout 후 circuit breaker가 sliding-window-size=6, minimum=3로 OPEN)
+    // - ACK는 송신자에게 정상 도착
+    execSync('docker compose stop redis', { stdio: 'pipe' });
+    await sleep(2000);  // stop 안정화
+    A.acks.length = 0;
+    const beforeFailureCount = await events.countDocuments({ sessionId: sessionUuid });
+    // 첫 3-4번 publish는 lettuce 2s timeout. 그 후엔 circuit breaker OPEN으로 즉시 fail.
+    for (let i = 1; i <= 5; i++) {
+      A.sendMessage(`during-redis-down-${i}`);
+      await sleep(500);
+    }
+    // 첫 호출의 lettuce timeout(2s) × 최대 3건 + 여유
+    await sleep(8000);
+    const afterFailureCount = await events.countDocuments({ sessionId: sessionUuid });
+    const ackDuringOutage = A.acks.length >= 5;
+    const insertedDuringOutage = afterFailureCount - beforeFailureCount === 5;
+    record('Redis stop — events INSERT 계속 + ACK 정상 (graceful degradation §15.4)',
+      ackDuringOutage && insertedDuringOutage,
+      `acks=${A.acks.length}/5, insertedDelta=${afterFailureCount - beforeFailureCount}/5`);
+
+    // [17] Redis start → 재구독(self-healing) 후 메시지 정상 전달
+    execSync('docker compose start redis', { stdio: 'pipe' });
+    // Redis healthy 대기
+    for (let i = 0; i < 30; i++) {
+      try {
+        const out = execSync('docker exec realtime-redis redis-cli ping', { stdio: 'pipe' }).toString().trim();
+        if (out === 'PONG') break;
+      } catch { /* not ready */ }
+      await sleep(500);
+    }
+    // self-healing scheduler가 3초마다 재구독 → 안전 마진 6초
+    await sleep(6000);
+    B.topicMessages.length = 0;
+    A.sendMessage('after-redis-recovery');
+    await sleep(1500);
+    const recoveredArrived = B.topicMessages.some((m) =>
+      m.kind === 'event' && m.payload?.content === 'after-redis-recovery');
+    record('Redis recovery — self-healing 재구독 후 라이브 전달 정상',
+      recoveredArrived,
+      `B.topicMessages.size=${B.topicMessages.length}, foundAfterRecovery=${recoveredArrived}`);
 
   } catch (err) {
     console.error('\n[FATAL]', err.stack || err);

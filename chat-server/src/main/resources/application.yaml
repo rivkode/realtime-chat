@@ -12,6 +12,10 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      # Lettuce sync 호출 timeout — Redis 끊김 시 60초 hang을 막아 핫패스가 멈추지 않도록(§15.4).
+      # 첫 publish가 2초만에 실패 → circuit breaker가 빠르게 OPEN 으로 전환.
+      timeout: 2s
+      connect-timeout: 2s
 
 server:
   port: ${SERVER_PORT:8081}
@@ -44,3 +48,23 @@ resume:
   catchup-threshold: ${RESUME_CATCHUP_THRESHOLD:1000}
   # 증분 응답의 기본 limit. 클라이언트가 요청에 명시하지 않을 때 적용.
   default-limit: ${RESUME_DEFAULT_LIMIT:200}
+
+# Resilience4j circuit breaker (설계서 §15.4 graceful degradation)
+# - Redis publish/presence 실패가 연속되면 OPEN으로 전환해 fast-fail → 죽어가는 Redis에
+#   매 요청 연결을 시도하며 지연이 쌓이는 것을 막는다.
+# - sliding window의 실패 비율이 임계치를 넘으면 OPEN → wait-duration 후 HALF_OPEN → 성공 시 CLOSED.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 6
+        minimum-number-of-calls: 3       # 첫 3번 빠르게 실패하면 OPEN으로 전환 — 핫패스 hang 최소화
+        failure-rate-threshold: 50       # 최근 호출의 50% 이상 실패 시 OPEN
+        wait-duration-in-open-state: 5s  # OPEN 상태 유지 시간
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+    instances:
+      redis-publish: { base-config: default }
+      redis-presence: { base-config: default }
