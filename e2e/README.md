@@ -1,8 +1,8 @@
-# Functional E2E — 자동 시나리오 12개
+# E2E — Functional 시나리오 17개 + 부하 테스트
 
-설계서의 핵심 기능을 한 번에 검증하는 Node.js 기반 자동 테스트.
+설계서의 핵심 기능을 자동 검증하는 Node.js 기반 테스트. functional(`scenario.js`)과 부하(`load.js`) 두 모드.
 
-## 검증 매트릭스
+## Functional 검증 매트릭스 (17개)
 
 | # | 시나리오 | 설계서 | 검증 방법 |
 |---|---|---|---|
@@ -18,21 +18,42 @@
 | 10 | Timeline at=과거시점 | §10 | 그 시점까지 메시지만 |
 | 11 | Leave + 즉시 스냅샷 | §8.2 + §12.3 trigger 1 | PARTICIPANT_LEFT event + snapshots +1 |
 | 12 | 결정론 (스냅샷 ≡ 같은 시점 timeline) | §10 | 두 결과 메시지 집합 동일 |
+| 13 | Actuator /health | §15.1 | 3개 서버 UP + mongo/redis indicator UP |
+| 14 | Prometheus 메트릭 | §14.3 | 단계별 카운터 + 처리 지연 Timer + 활성 Gauge |
+| 15 | traceId 전파 | §14.2 | STOMP 매건 다른 UUID + REST 헤더 echo + events 박힘 |
+| 16 | Redis stop — graceful degradation | §15.4 | events INSERT 계속 + ACK 정상 |
+| 17 | Redis recovery — self-healing | §15.4 | 재구독 후 라이브 전달 정상 |
+
+## 부하 테스트 (`load.js`, 설계서 §18)
+
+- user-1·user-2가 각각 5초간 50ms 간격 100건 → 한 세션 ~200 이벤트
+- 측정: client send→ACK 지연(p50/p95/p99), 서버측 처리 지연(Prometheus), UUIDv7 순서 정합성
+- `timeline?at=` 복원 시간을 누적 건수별로 측정 → `SNAPSHOT_THRESHOLD` 권장값 도출
 
 ## 실행
 
 ```bash
-# 컨테이너가 이미 떠 있을 때
-./e2e/run.sh
+# functional 시나리오
+./e2e/run.sh                      # 컨테이너 떠 있을 때
+./e2e/run.sh --rebuild            # 깨끗한 상태로 재빌드부터
+./e2e/run.sh --restart            # 데이터만 청소 (재빌드 없이)
 
-# 깨끗한 상태로 재빌드부터
-./e2e/run.sh --rebuild
-
-# 데이터만 청소 (재빌드 없이)
-./e2e/run.sh --restart
+# 부하 테스트
+./e2e/run.sh --load               # 부하 모드 (load.js)
+./e2e/run.sh --rebuild --load     # 재빌드 후 부하
 ```
 
 처음 실행 시 `npm install` 자동 수행 (~10초). 이후 실행은 `node_modules` 캐시.
+
+## 부하 테스트 환경 변수
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `LOAD_BURST_PER_USER` | `100` | 유저당 송신 건수 |
+| `LOAD_BURST_INTERVAL_MS` | `50` | 송신 간격 |
+| `LOAD_RESTORE_STEPS` | `2000,5000,10000,20000` | 복원 시간 측정 누적 단계 |
+| `LOAD_RESTORE_TARGET_MS` | `1000` | 복원 1초 임계치 |
+| `LOAD_P99_TARGET_MS` | `200` | client p99 PASS 기준 |
 
 ## 환경 변수 (기본값)
 
