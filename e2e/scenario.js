@@ -1,13 +1,13 @@
 /* eslint-disable no-console */
 /**
- * Realtime Chat — 자동 e2e 시나리오 (12개)
+ * Realtime Chat — 자동 e2e 시나리오 (18개)
  *
  * 사전 조건: docker compose up -d 로 mongodb/redis/api-server/chat-server-1·2 모두 Up.
  *
  * 흐름:
  *   1. POST /sessions (HTTP)
  *   2. 두 STOMP 클라이언트 연결: A@8081(user-1), B@8082(user-2)
- *   3. 시나리오 12개 실행
+ *   3. 시나리오 18개 실행 (기능 검증 + 장애 주입: Redis stop/start, chat-server stop/start)
  *   4. mongo 쿼리로 검증
  *   5. PASS/FAIL 요약 출력 (exit 0/1)
  */
@@ -467,6 +467,43 @@ async function getJson(path) {
     record('Redis recovery — self-healing 재구독 후 라이브 전달 정상',
       recoveredArrived,
       `B.topicMessages.size=${B.topicMessages.length}, foundAfterRecovery=${recoveredArrived}`);
+
+    // [18] 채팅 서버 인스턴스 다운 → 다른 서버로 재연결 → resume catch-up (설계서 §15.1)
+    // A는 chat-server-1, B는 chat-server-2에 연결돼 있다. chat-server-1을 죽이고,
+    // A가 chat-server-2로 재연결해 다운 동안 B가 보낸 메시지를 resume으로 복구한다.
+    //   감지 = A의 WebSocket 끊김 / 완화 = 살아있는 chat-server-2로 재연결(LB 역할 수동 재현)
+    //   복구 = resume(last_event_id) catch-up
+    const latestBeforeDown = await events.find({ sessionId: sessionUuid })
+      .sort({ _id: -1 }).limit(1).toArray();
+    const aLastEventId = latestBeforeDown[0]._id.toString();
+
+    execSync('docker compose stop chat-server-1', { stdio: 'pipe' });
+    await sleep(2000); // A의 WebSocket 끊김 안정화
+
+    // 다운 동안 B(chat-server-2)가 메시지 송신 — A는 받지 못한다
+    for (let i = 1; i <= 3; i++) {
+      B.sendMessage(`during-cs1-down-${i}`);
+      await sleep(300);
+    }
+    await sleep(1000);
+
+    // A를 chat-server-2로 재연결 — 로컬엔 LB가 없으므로 클라이언트가 직접 8082로(LB 역할 수동 재현)
+    A.disconnect();
+    const aReconnect = new StompClient('A2', CHAT2_URL, 'user-1', sessionId);
+    await aReconnect.connect();
+    await sleep(500);
+    aReconnect.resume(aLastEventId);
+    const cs1ResumeRes = await aReconnect.waitForResume(5000);
+    const recovered = cs1ResumeRes.mode === 'INCREMENTAL'
+      ? cs1ResumeRes.events.filter((e) => (e.payload?.content || '').startsWith('during-cs1-down')).length
+      : cs1ResumeRes.state.messages.filter((m) => (m.content || '').startsWith('during-cs1-down')).length;
+    record('채팅 서버 다운 → 다른 서버 재연결 → resume catch-up (§15.1)',
+      recovered === 3,
+      `mode=${cs1ResumeRes.mode}, 다운중 누락복구=${recovered}/3`);
+    aReconnect.disconnect();
+
+    // 정리 — chat-server-1 복구
+    execSync('docker compose start chat-server-1', { stdio: 'pipe' });
 
   } catch (err) {
     console.error('\n[FATAL]', err.stack || err);

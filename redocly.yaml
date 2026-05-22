@@ -1,0 +1,5 @@
+# openapi.yaml 린트 설정.
+# minimal 룰셋 — OpenAPI 3.0 스펙 위반만 검출하고, 인증 정의·operationId 같은
+# 권장 사항은 강제하지 않는다(인증은 본 과제 비목표 — task.md §3).
+extends:
+  - minimal
