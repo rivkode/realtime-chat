@@ -1,8 +1,8 @@
-# E2E — Functional 시나리오 17개 + 부하 테스트
+# E2E — Functional 시나리오 18개 + 부하 테스트
 
 설계서의 핵심 기능을 자동 검증하는 Node.js 기반 테스트. functional(`scenario.js`)과 부하(`load.js`) 두 모드.
 
-## Functional 검증 매트릭스 (17개)
+## Functional 검증 매트릭스 (18개)
 
 | # | 시나리오 | 설계서 | 검증 방법 |
 |---|---|---|---|
@@ -23,6 +23,7 @@
 | 15 | traceId 전파 | §14.2 | STOMP 매건 다른 UUID + REST 헤더 echo + events 박힘 |
 | 16 | Redis stop — graceful degradation | §15.4 | events INSERT 계속 + ACK 정상 |
 | 17 | Redis recovery — self-healing | §15.4 | 재구독 후 라이브 전달 정상 |
+| 18 | 채팅 서버 다운 → 재연결 → resume catch-up | §15.1 | chat-server-1 stop → 다른 서버 재연결 → 다운 중 누락분 resume 복구 |
 
 ## 부하 테스트 (`load.js`, 설계서 §18)
 

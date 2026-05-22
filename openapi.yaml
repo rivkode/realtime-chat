@@ -1,0 +1,481 @@
+openapi: 3.0.3
+
+info:
+  title: 실시간 1:1 채팅 — REST API
+  description: |
+    이벤트 소싱 기반 1:1 실시간 채팅 시스템의 REST API.
+
+    세션 수명주기·이벤트 수집·특정 시점 상태 복원을 담당한다. 실시간 메시지 송수신은
+    WebSocket(STOMP)으로 처리하며 본 명세에 포함되지 않는다 — STOMP 계약은 `docs/design/api-spec.md` 참조.
+
+    공통 규칙:
+    - 모든 ID는 UUID 문자열, 시각은 ISO-8601(UTC)
+    - 멱등이 필요한 쓰기 요청은 `clientEventId`를 본문에 포함
+    - 같은 `clientEventId` 재전송 시 신규는 201, 중복은 200(기존 결과 반환)
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: 로컬 API 서버
+
+tags:
+  - name: sessions
+    description: 세션 수명주기
+  - name: events
+    description: 이벤트/메시지 수집·조회
+  - name: timeline
+    description: 특정 시점 상태 복원
+  - name: snapshots
+    description: 스냅샷
+
+paths:
+  /sessions:
+    post:
+      tags: [sessions]
+      summary: 세션 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+            example:
+              createdBy: user-1
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+              example:
+                id: 019e3a79-69f4-70c9-b34b-5befac922fa9
+                status: ACTIVE
+                createdBy: user-1
+                participants: []
+                createdAt: '2026-05-22T10:00:00Z'
+                endedAt: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      tags: [sessions]
+      summary: 세션 목록 조회 (필터 + 커서 페이지네이션)
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SessionStatus' }
+        - name: participant
+          in: query
+          description: 참여 user_id
+          schema: { type: string }
+        - name: from
+          in: query
+          description: 생성 시각 하한 (ISO-8601)
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: 생성 시각 상한 (ISO-8601)
+          schema: { type: string, format: date-time }
+        - name: cursor
+          in: query
+          description: 페이지네이션 커서 — 직전 응답의 nextCursor
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          description: 페이지 크기 (기본 20, 최대 100)
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+
+  /sessions/{id}:
+    get:
+      tags: [sessions]
+      summary: 세션 1건 조회
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /sessions/{id}/join:
+    post:
+      tags: [sessions]
+      summary: 세션 참여
+      description: |
+        멱등 — 같은 `clientEventId`로 다시 호출하면 새 이벤트를 만들지 않고 200으로 기존 상태를 반환한다.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinSessionRequest'
+            example:
+              userId: user-2
+              clientEventId: feef19e2-a2da-48be-a845-99d739faa5e8
+      responses:
+        '201':
+          description: 참여 (신규 participant_joined 이벤트)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JoinSessionResponse' }
+        '200':
+          description: 멱등 — 이미 참여 처리됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JoinSessionResponse' }
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          $ref: '#/components/responses/SessionAlreadyEnded'
+
+  /sessions/{id}/end:
+    post:
+      tags: [sessions]
+      summary: 세션 종료
+      description: session_ended 이벤트를 발행하고 세션 상태를 ENDED로 전환. 종료 직후 스냅샷이 비동기 생성된다.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EndSessionRequest'
+            example:
+              endedBy: user-1
+              clientEventId: 33333333-3333-3333-3333-333333333333
+      responses:
+        '200':
+          description: 종료됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EndSessionResponse' }
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /sessions/{id}/events:
+    post:
+      tags: [events]
+      summary: 이벤트/메시지 수집
+      description: |
+        WebSocket 수집과 동일한 멱등 경로를 HTTP로 노출 — 테스트·재현·운영 도구용.
+        `{session_id, client_event_id}` unique index가 중복을 차단한다.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppendEventRequest'
+            examples:
+              messageSent:
+                summary: 메시지 송신
+                value:
+                  type: MESSAGE_SENT
+                  actorUserId: user-1
+                  clientEventId: 22222222-2222-2222-2222-222222222222
+                  payload: { content: 안녕하세요 }
+                  clientTs: '2026-05-22T10:01:00Z'
+              messageEdited:
+                summary: 메시지 수정
+                value:
+                  type: MESSAGE_EDITED
+                  actorUserId: user-1
+                  clientEventId: 44444444-4444-4444-4444-444444444444
+                  payload:
+                    targetEventId: 019e3a7f-3b95-7cea-bdb2-155e645c472d
+                    content: 수정된 내용
+      responses:
+        '201':
+          description: 신규 이벤트 저장됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppendEventResponse' }
+        '200':
+          description: 멱등 — 같은 clientEventId가 이미 존재. 기존 이벤트 반환.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppendEventResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    get:
+      tags: [events]
+      summary: 이벤트 조회 (디버깅·Pull sync 검증용)
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: after
+          in: query
+          description: 이 event_id 이후의 이벤트만 (커서)
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100, maximum: 500 }
+      responses:
+        '200':
+          description: 조회 성공
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventListResponse' }
+
+  /sessions/{id}/timeline:
+    get:
+      tags: [timeline]
+      summary: 특정 시점 상태 복원
+      description: |
+        가장 가까운 스냅샷에서 출발해 이후 이벤트를 결정론적 리듀서로 fold한 상태를 반환한다.
+        `at`이 없으면 현재 시점. 같은 입력에 항상 같은 결과(Determinism).
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: at
+          in: query
+          description: 복원 기준 시각 (ISO-8601). 생략 시 현재 시점.
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: 복원 성공
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TimelineResponse' }
+              example:
+                sessionId: 019e3a79-69f4-70c9-b34b-5befac922fa9
+                at: '2026-05-22T10:05:00Z'
+                participants: [user-1, user-2]
+                messages:
+                  - eventId: 019e3a7f-3b95-7cea-bdb2-155e645c472d
+                    sender: user-1
+                    content: 안녕하세요
+                    status: SENT
+                sessionStatus: ACTIVE
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /sessions/{id}/snapshots:
+    post:
+      tags: [snapshots]
+      summary: 스냅샷 수동 트리거 (테스트·운영자 개입용)
+      description: |
+        평상시엔 스케줄러와 session_ended 이벤트 트리거가 자동 생성한다. 이 엔드포인트는 수동 트리거.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '201':
+          description: 스냅샷 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SnapshotResponse' }
+        '204':
+          description: 마지막 스냅샷 이후 새 이벤트가 없어 생성하지 않음
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+components:
+
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: 세션 UUID
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: 잘못된 요청
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example:
+            error: { code: BAD_REQUEST, message: 'createdBy is required' }
+    SessionNotFound:
+      description: 세션 없음
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example:
+            error: { code: SESSION_NOT_FOUND, message: 'Session not found: ...' }
+    SessionAlreadyEnded:
+      description: 이미 종료된 세션
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+          example:
+            error: { code: SESSION_ALREADY_ENDED, message: 'Session already ended: ...' }
+
+  schemas:
+
+    SessionStatus:
+      type: string
+      enum: [ACTIVE, INTERRUPTED, ENDED]
+
+    EventType:
+      type: string
+      enum:
+        - SESSION_CREATED
+        - PARTICIPANT_JOINED
+        - PARTICIPANT_LEFT
+        - MESSAGE_SENT
+        - MESSAGE_EDITED
+        - MESSAGE_DELETED
+        - SESSION_ENDED
+
+    MessageStatus:
+      type: string
+      enum: [SENT, EDITED, DELETED]
+
+    CreateSessionRequest:
+      type: object
+      required: [createdBy]
+      properties:
+        createdBy: { type: string }
+
+    SessionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        createdBy: { type: string }
+        participants:
+          type: array
+          items: { type: string }
+          description: events의 participant_joined에서 집계
+        createdAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time, nullable: true }
+
+    SessionListResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items: { $ref: '#/components/schemas/SessionResponse' }
+        nextCursor:
+          type: string
+          format: uuid
+          nullable: true
+          description: 다음 페이지 커서. null이면 마지막 페이지.
+
+    JoinSessionRequest:
+      type: object
+      required: [userId, clientEventId]
+      properties:
+        userId: { type: string }
+        clientEventId: { type: string, format: uuid, description: 클라이언트 발급 멱등 키 }
+
+    JoinSessionResponse:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+
+    EndSessionRequest:
+      type: object
+      required: [endedBy, clientEventId]
+      properties:
+        endedBy: { type: string }
+        clientEventId: { type: string, format: uuid }
+
+    EndSessionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        endedAt: { type: string, format: date-time }
+
+    AppendEventRequest:
+      type: object
+      required: [type, actorUserId, clientEventId]
+      properties:
+        type: { $ref: '#/components/schemas/EventType' }
+        actorUserId: { type: string }
+        clientEventId: { type: string, format: uuid }
+        payload:
+          type: object
+          description: |
+            이벤트 타입별 가변 필드.
+            message_sent → { content }, message_edited → { targetEventId, content },
+            message_deleted → { targetEventId }, participant_joined/left → { userId }
+          additionalProperties: true
+        clientTs:
+          type: string
+          format: date-time
+          description: 클라이언트 시각 — 참고용, 정렬에 사용하지 않음
+
+    AppendEventResponse:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid, description: 서버 발급 UUIDv7 }
+        serverTs: { type: string, format: date-time }
+
+    EventView:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/EventType' }
+        actorUserId: { type: string }
+        clientEventId: { type: string, format: uuid }
+        payload: { type: object, additionalProperties: true }
+        clientTs: { type: string, format: date-time, nullable: true }
+        serverTs: { type: string, format: date-time }
+
+    EventListResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/EventView' }
+        nextCursor:
+          type: string
+          format: uuid
+          nullable: true
+
+    TimelineMessageView:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        sender: { type: string }
+        content: { type: string }
+        status: { $ref: '#/components/schemas/MessageStatus' }
+
+    TimelineResponse:
+      type: object
+      properties:
+        sessionId: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        participants:
+          type: array
+          items: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/TimelineMessageView' }
+        sessionStatus: { $ref: '#/components/schemas/SessionStatus' }
+
+    SnapshotResponse:
+      type: object
+      properties:
+        snapshotId: { type: string, format: uuid }
+        upToEventId: { type: string, format: uuid, description: 이 이벤트까지 반영된 상태 }
+        snapshotAt: { type: string, format: date-time }
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }

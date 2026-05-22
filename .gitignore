@@ -1,6 +1,7 @@
 HELP.md
 .gradle
 build/
+task.md
 
 ### Claude Code ###
 .claude/
